@@ -28,23 +28,23 @@ sio.set('authorization', function(handshakeData, accept) {
   accept(null, true);
 });
 
+var colors=["RED","BLUE","GREEN"];
+
 function Viewers(sio) {
   var data = [];
+  var tmp;
 
   function notifyChanges() {
     sio.emit('viewers:updated', data);
   }
 
   return {
-    add: function add(nickname) {
-      data.push(nickname);
+    add: function add(viewer) {
+      data.push(viewer);
       notifyChanges();
     },
-    remove: function remove(nickname) {
-      var idx = data.indexOf(nickname);
-      if (idx > -1) {
-        data.splice(idx, 1);
-      }
+    remove: function remove(viewer) {
+      data = data.filter(function(dataViewer){return dataViewer !== viewer;});
       notifyChanges();
       console.log('-->', data);
     }
@@ -54,20 +54,47 @@ function Viewers(sio) {
 var viewers = Viewers(sio);
 
 
+function Messages(sio) {
+  var data = [];
+
+  function notifyChanges() {
+    sio.emit('messages:updated', data);
+  }
+
+  return {
+    add: function add(viewer, message) {
+        data.push({viewer: viewer, message: message});
+        notifyChanges();
+    }
+  };
+}
+
+
+var messages = Messages(sio);
+
 // @todo extract in its own
 sio.on('connection', function(socket) {
 
   // console.log('nouvelle connexion', socket.id);
   socket.on('viewer:new', function(nickname) {
-    socket.nickname = nickname;
-    viewers.add(nickname);
-    console.log('new viewer with nickname %s', nickname, viewers);
+    socket.viewer = {nickname:nickname, color: colors[nickname.length%3]};
+    viewers.add(socket.viewer);
+    console.log('new viewer with nickname %s', nickname);
+  });
+
+  socket.on('message:new', function(message) {
+    messages.add(socket.viewer,message);
+    console.log('new message from %s', socket.nickname);
   });
 
   socket.on('disconnect', function() {
-    viewers.remove(socket.nickname);
-    console.log('viewer disconnected %s\nremaining:', socket.nickname, viewers);
+    viewers.remove(socket.viewer);
+    console.log('viewer disconnected %s\nremaining:', socket.nickname);
   });
+
+  /*socket.on('todo:updated', function() {
+    sio.emit.apply(sio, ['todo:updated'].concat(_.toArray(arguments)));
+  });*/
 
   socket.on('file:changed', function() {
     if (!socket.conn.request.isAdmin) {
